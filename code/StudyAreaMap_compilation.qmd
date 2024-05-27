@@ -1,0 +1,79 @@
+---
+title: "REKI Migration Regions"
+author: "Steffen Oppel"
+format: html
+editor: visual
+---
+
+## Can NDVI explain Red Kite migration?
+
+This document compiles a range of possible maps with study regions of equal-sized hexagons. The purpose of the document is to facilitate the quick screening and selection of a suitable arrangement of grid cells that would capture the key regions of Red Kite migration.
+
+```{r}
+#| echo=FALSE,
+#| include=FALSE
+library(tidyverse)
+library(dplyr, warn.conflicts = FALSE)
+library(ggplot2)
+library(sf)
+library("rnaturalearth")
+library("rnaturalearthdata")
+SIMS<-expand.grid(latstart=c(1400000,1522511,1600000),
+                  longstart=c(2600000,2700000,2800000),
+                  flattop=c(TRUE,FALSE),
+                  gridsize=c(400000,500000)) %>%
+  mutate(SIM=seq_along(latstart))
+
+
+## create plotting function
+make_plot <- function(bbox,grid_EU,europe,gridsize){
+ggplot(data = europe) +
+  geom_sf(fill = "antiquewhite1") +
+  geom_sf(data = grid_EU, fill = "firebrick", alpha=0.3) +
+  ggtitle(paste0("longstart: ",SIMS$longstart[m]/100000," | latstart: ",SIMS$latstart[m]/100000," | gridsize: ", SIMS$gridsize[m]/1000))
+}
+
+bbox <- st_sfc(st_point(c(-10.2, 36)), st_point(c(20, 55)), crs = 4326) %>% st_bbox()
+europe <- ne_countries(scale = "medium", returnclass = "sf") %>%
+  #mutate(subregion=ifelse(admin %in% c("Czechia","Poland","Slovakia","Hungary"),"Western Europe",subregion)) %>%
+  mutate(subregion=ifelse(admin %in% c("Spain","Portugal","Andorra","Italy"),"Western Europe",subregion)) %>%
+  filter(continent=="Europe") %>%
+  filter(type!="Dependency") %>%
+  filter(subregion %in% c("Western Europe")) %>%
+  st_crop(y=bbox) %>%
+  st_transform(3035)
+```
+
+```{r}
+#| echo=FALSE,
+#| warning=FALSE,
+#| message=FALSE,
+#| results='asis'
+
+newslide <- function(options = "", heading = "", content) {
+  code <- deparse(substitute(content))
+  
+  cat(sep = "\n", 
+      knitr::knit_child(
+        quiet = TRUE, 
+        text = knitr::knit_expand(text = c("```{r {{options}} }", "{{code}}", "```"))))
+}
+
+
+for (m in SIMS$SIM) {
+  grid_EU <- europe %>%
+    st_make_grid(cellsize = SIMS$gridsize[m], what = "polygons",
+                 offset=c(SIMS$longstart[m],SIMS$latstart[m]),
+                 flat_topped=SIMS$flattop[m],
+                 square = FALSE) # This statements leads to hexagons
+  tab <- st_intersects(grid_EU, europe)
+  grid_EU <- st_sf(n_countries = lengths(tab), geometry = st_cast(grid_EU, "MULTIPOLYGON")) %>%
+    dplyr::filter(n_countries>0)
+  
+newslide(
+  options = paste0("fig.width=5, fig.height=5, dpi = 600, warning=FALSE, message=FALSE, echo=FALSE"),
+  content = make_plot(bbox,grid_EU,europe,gridsize=SIMS$gridsize[m]/1000)
+)
+
+}
+```
