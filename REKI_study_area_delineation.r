@@ -14,7 +14,10 @@ library(sf)
 library(terra)
 library("rnaturalearth")
 library("rnaturalearthdata")
+library(gridExtra)
 
+## set root folder for project
+#setwd("C:/Users/sop/OneDrive - Vogelwarte/General/ANALYSES/REKI_NDVI")
 
 
 #### ###########
@@ -32,56 +35,20 @@ europe <- ne_countries(scale = "medium", returnclass = "sf") %>%
   st_transform(3035)
 plot(europe %>% select(tlc))
 
-### CREATE HEXAGONAL GRID AND COUNT COUNTRIES PER GRID CELL
-grid_EU <- europe %>%
-  st_make_grid(cellsize = 500000, what = "polygons",
-               offset=c(2700000,1522511),
-               flat_topped=T,
-               square = FALSE) # This statements leads to hexagons
-tab <- st_intersects(grid_EU, europe)
-lengths(tab)
-grid_EU <- st_sf(n_countries = lengths(tab), geometry = st_cast(grid_EU, "MULTIPOLYGON")) %>%
-  dplyr::filter(n_countries>0)
-
-ggplot(data = europe) +
-  geom_sf(fill = "antiquewhite1") +
-  geom_sf(data = grid_EU, fill = "firebrick", alpha=0.3)
-
-##########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~######################################
-########## USE TMAP TO VISUALISE THE DATA-------------------------------------------    #############
-##########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~######################################
-
-tmap_mode("view")
-map1<-tm_basemap(server="OpenStreetMap") +
-  #tm_basemap(server="http://tile.openstreetmap.org/{z}/{x}/{y}.png") +
-  tm_shape(grid_EU)  +
-  tm_polygons(col = "firebrick", alpha=0.3) +
-  tm_layout(title =paste0("longrange: ",bbox[1]," - ",bbox[3]," | latrange: ",bbox[2]," - ", bbox[4]," | gridsize: ", "500"),
-          title.size=14, title.color="grey17",title.position=c('right', 'top'))
-
-tmap_save(map1,filename=paste0("output/MAP_long",bbox[1],"_",bbox[3],"_lat",bbox[2],"_", bbox[4],"_grid", "500",".html"),
-          width=9, height=8)
-
-
-
-
-
-
 
 ##########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~######################################
 ########## LOOP OVER DIFFERENT VALUES TO GENERATE STUDY MAP SOLUTIONS---------------    #############
 ##########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~######################################
 
-
-SIMS<-expand.grid(latstart=c(1400000,1522511,1600000),
-                  longstart=c(2600000,2700000,2800000),
-                  flattop=c(TRUE,FALSE),
+### REDUCED on 5 June to curtail to sensible solution
+SIMS<-expand.grid(latstart=c(1400000,1600000),
+                  longstart=c(2600000,2800000),
+                  flattop=c(TRUE),
                   gridsize=c(400000,500000)) %>%
   mutate(SIM=seq_along(latstart))
-
-
+plot_list <- list()
 for (m in SIMS$SIM) {
-
+  
   grid_EU <- europe %>%
     st_make_grid(cellsize = SIMS$gridsize[m], what = "polygons",
                  offset=c(SIMS$longstart[m],SIMS$latstart[m]),
@@ -91,25 +58,42 @@ for (m in SIMS$SIM) {
   grid_EU <- st_sf(n_countries = lengths(tab), geometry = st_cast(grid_EU, "MULTIPOLYGON")) %>%
     dplyr::filter(n_countries>0)
   
-  tmap_mode("view")
-  map1<-tm_basemap(server="OpenStreetMap") +
-    tm_shape(grid_EU)  +
-    tm_polygons(col = "firebrick", alpha=0.3) +
-    tm_layout(title =paste0("longstart: ",SIMS$longstart[m]/100000," | latstart: ",SIMS$latstart[m]/100000," | gridsize: ", SIMS$gridsize[m]/1000),
-              title.size=14, title.color="grey17",title.position=c('right', 'top'))
+  plot_list[[m]]<-ggplot(data = europe) +
+    geom_sf(fill = "antiquewhite1") +
+    geom_sf(data = grid_EU, fill = "firebrick", alpha=0.3) +
+    ggtitle(paste0("long: ",SIMS$longstart[m]/100000," | lat: ",SIMS$latstart[m]/100000," | grid: ", SIMS$gridsize[m]/1000))
   
-  tmap_save(map1,filename=paste0("output/MAP_long",SIMS$longstart[m]/100000,"_lat",SIMS$latstart[m]/100000,"_grid", SIMS$gridsize[m]/1000,".html"),
-            width=9, height=8)
-  
-  # ggplot(data = europe) +
-  #   geom_sf(fill = "antiquewhite1") +
-  #   geom_sf(data = grid_EU, fill = "firebrick", alpha=0.3) +
-  #   ggtitle(paste0("longrange: ",bbox[1]," - ",bbox[3]," | latrange: ",bbox[2]," - ", bbox[4]," | gridsize: ", SIMS$gridsize[m]/1000))
-  # 
   
 }
 
 
+out<-grid.arrange(grobs=plot_list,ncol=2)
+ggsave("output/REKI_Europe_grid_cells.jpg", out, width=10, height=16)
+
+
+
+##########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~######################################
+########## USE TMAP TO VISUALISE THE DATA-------------------------------------------    #############
+##########~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~######################################
+
+### since June 2024 tmap_save no longer works with any combination of device or file path
+
+tmap_mode("plot")
+map1<-tm_basemap(server="OpenStreetMap") +
+  #tm_basemap(server="http://tile.openstreetmap.org/{z}/{x}/{y}.png") +
+  tm_shape(grid_EU)  +
+  tm_polygons(col = "firebrick", alpha=0.3) +
+  tm_layout(title =paste0("longrange: ",bbox[1]," - ",bbox[3]," | latrange: ",bbox[2]," - ", bbox[4]," | gridsize: ", "500"),
+          title.size=14, title.color="grey17",title.position=c('right', 'top'))
+
+# tmap_save(map1,filename=paste0("output/MAP_long",bbox[1],"_",bbox[3],"_lat",bbox[2],"_", bbox[4],"_grid", "500",".jpg"),
+#           width=9, height=8)
+# 
+# saveWidget(mapl,file.path(normalizePath(dirname(paste0("C:/Users/sop/OneDrive - Vogelwarte/General/ANALYSES/REKI_NDVI/output/MAP_long",bbox[1],"_",bbox[3],"_lat",bbox[2],"_", bbox[4],"_grid", "500",".html"))),basename(paste0("C:/Users/sop/OneDrive - Vogelwarte/General/ANALYSES/REKI_NDVI/output/MAP_long",bbox[1],"_",bbox[3],"_lat",bbox[2],"_", bbox[4],"_grid", "500",".html"))))
+# 
+# tmap_save(map1,
+#           filename=file.path(normalizePath(dirname(paste0("C:/Users/sop/OneDrive - Vogelwarte/General/ANALYSES/REKI_NDVI/output/MAP_long",bbox[1],"_",bbox[3],"_lat",bbox[2],"_", bbox[4],"_grid", "500",".html")))),
+#           width=9, height=8)
 
 
 
