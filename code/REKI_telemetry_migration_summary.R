@@ -49,7 +49,9 @@ ggplot() +
 
 
 
-###  MANIPULATE TRACKING DATA AND BIN TEMPORALLY AND SPATIALLY ### 
+###  MANIPULATE TRACKING DATA AND BIN TEMPORALLY AND SPATIALLY ###
+## cannot do that because it will create mad movements so first need to re-define bird_id as id_year
+REKI<-REKI %>% mutate(year_id=paste(bird_id, year(timestamp), sep="_"))
 year(REKI$timestamp)<-2020  ## assign all dat to a single year
 mois <- c("01","02","03","04","05","06","07","08","09","10","11","12")
 jours <- c("01","11","21")
@@ -74,24 +76,29 @@ REKI_ind_summary<-REKI %>%
   st_transform("+proj=eqearth +datum=WGS84 +lon_0=-10") %>%
   st_join(grid_EU_REKI,join = st_within) %>%
   st_drop_geometry() %>%
-  group_by(ID, bird_id, period_id) %>%
+  group_by(ID, bird_id, year_id, age_cy, sex, period_id) %>%
   summarise(n=length(timestamp))
 
 ## for each period and individual take the hexagon with the max number of locations
-REKI_migra_links<-expand.grid(bird_id=unique(REKI_ind_summary$bird_id),period_id=timebins$period_id) %>%
+REKI_migra_links<-expand.grid(year_id=unique(REKI_ind_summary$year_id),period_id=timebins$period_id) %>%
   mutate(origin=0,destination=0)
-for (i in unique(REKI_ind_summary$bird_id)){
+dim(REKI_migra_links)
+length(unique(REKI_ind_summary$year_id))
+which(unique(REKI_ind_summary$year_id)=="446_2020")
+
+## THIS TAKES 2 FULL DAYS TO COMPLETE!!
+for (i in unique(REKI_ind_summary$year_id)){
   for(t in 1:max(timebins$period_id)){
     xi<-REKI_ind_summary %>%
-      filter(bird_id==i) %>%
+      filter(year_id==i) %>%
       filter(period_id==t)
     if(dim(xi)[1]>0){
-      REKI_migra_links$origin[REKI_migra_links$bird_id==i & REKI_migra_links$period_id==t]<-xi$ID[which.max(xi$n)]
+      REKI_migra_links$origin[REKI_migra_links$year_id==i & REKI_migra_links$period_id==t]<-xi$ID[which.max(xi$n)]
       xit<-REKI_ind_summary %>%
-        filter(bird_id==i) %>%
+        filter(year_id==i) %>%
         filter(period_id==ifelse(t==36,1,t+1))
       if(dim(xit)[1]>0){ 
-      REKI_migra_links$destination[REKI_migra_links$bird_id==i & REKI_migra_links$period_id==t]<-xit$ID[which.max(xit$n)]
+      REKI_migra_links$destination[REKI_migra_links$year_id==i & REKI_migra_links$period_id==t]<-xit$ID[which.max(xit$n)]
       }
     }
   }
@@ -118,7 +125,7 @@ REKI_summary<-REKI_migra_links %>%
   # st_drop_geometry() %>%
   filter(origin>0) %>%
   group_by(origin, period_id) %>%
-  summarise(n=length(unique(bird_id)))
+  summarise(n=length(unique(year_id)))
 write.csv(REKI_summary, "output/REKI_grid_summary.csv")
 
 
@@ -132,7 +139,7 @@ REKI_migra_links_plot<-REKI_migra_links %>%
   left_join(REKI_summary, by=c("origin","period_id")) %>%
   ungroup() %>%
   group_by(period_id,origin,destination) %>%
-  summarise(flow=length(unique(bird_id))/n) %>%  ## flow as proportion of the birds in that grid cell at that time
+  summarise(flow=length(unique(year_id))/n) %>%  ## flow as proportion of the birds in that grid cell at that time
   mutate(
     x1 = as.numeric(hex_centroids$X[origin]),
     x2 = as.numeric(hex_centroids$X[destination]),
